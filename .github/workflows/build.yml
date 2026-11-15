@@ -25,7 +25,10 @@ jobs:
           f=app/src/main/AndroidManifest.xml
           sed -i '1s/^\xEF\xBB\xBF//' "$f"
           sed -i '1s/^[[:space:]]*//' "$f"
-          head -c 80 "$f" | od -c | head -3
+      - name: List files and remove broken duplicate
+        run: |
+          find . -name '*.kt' -not -path './.git/*' -exec wc -l {} +
+          find . -name 'MatchesScreen.kt' -size -3k -print -delete
       - name: Build
         run: gradle assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
