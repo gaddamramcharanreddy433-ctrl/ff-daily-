@@ -1,75 +1,94 @@
 package com.ffdaily.app
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 @Composable
-fun MainScreen() {
-    var user by remember { mutableStateOf(UserDoc()) }
-    var config by remember { mutableStateOf(AppConfig()) }
-    var isAdmin by remember { mutableStateOf(false) }
-    var tab by remember { mutableStateOf(0) }
+fun MatchesScreen() {
+    var matches by remember { mutableStateOf(listOf<MatchDoc>()) }
+    var message by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        try { isAdmin = Repo.isAdmin() } catch (_: Exception) { }
+        try { Repo.ensureTodayMatches() } catch (_: Exception) { }
     }
 
     DisposableEffect(Unit) {
-        val id = Repo.uid
-        if (id == null) {
-            onDispose { }
-        } else {
-            val r1 = Repo.db.collection("users").document(id)
-                .addSnapshotListener { s, _ ->
-                    s?.toObject(UserDoc::class.java)?.let { user = it }
-                }
-            val r2 = Repo.db.collection("config").document("app")
-                .addSnapshotListener { s, _ ->
-                    config = s?.toObject(AppConfig::class.java) ?: AppConfig()
-                }
-            onDispose { r1.remove(); r2.remove() }
-        }
+        val reg = Repo.db.collection("matches").whereEqualTo("date", todayKey())
+            .addSnapshotListener { s, _ ->
+                matches = s?.documents
+                    ?.mapNotNull { d -> d.toObject(MatchDoc::class.java)?.copy(id = d.id) }
+                    ?.sortedBy { it.slotIndex } ?: emptyList()
+            }
+        onDispose { reg.remove() }
     }
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = tab == 0, onClick = { tab = 0 },
-                    icon = { Text("🎮") }, label = { Text("Matches") }
-                )
-                NavigationBarItem(
-                    selected = tab == 1, onClick = { tab = 1 },
-                    icon = { Text("💰") }, label = { Text("Wallet") }
-                )
-                NavigationBarItem(
-                    selected = tab == 2, onClick = { tab = 2 },
-                    icon = { Text("👤") }, label = { Text("Profile") }
-                )
-                if (isAdmin) {
-                    NavigationBarItem(
-                        selected = tab == 3, onClick = { tab = 3 },
-                        icon = { Text("🛠") }, label = { Text("Admin") }
-                    )
-                }
-            }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text("Today's Solo matches · Entry $ENTRY_FEE coins", style = MaterialTheme.typography.bodyMedium)
+            message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
-    ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
-            Text(
-                "FF Daily · ${user.coins} coins",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(16.dp)
-            )
-            Box(Modifier.weight(1f)) {
-                when (tab) {
-                    0 -> MatchesScreen()
-                    1 -> WalletScreen(user, config)
-                    2 -> ProfileScreen(user)
-                    else -> AdminScreen(config)
+        items(matches, key = { it.id }) { m ->
+            MatchCard(m) { message = it }
+        }
+        item { Spacer(Modifier.height(16.dp)) }
+    }
+}
+
+@Composable
+private fun MatchCard(m: MatchDoc, onMessage: (String?) -> Unit) {
+    var entry by remember(m.id) { mutableStateOf<EntryDoc?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    DisposableEffect(m.id) {
+        val reg = Repo.db.collection("matches").document(m.id)
+            .collection("entries").document(Repo.uid!!)
+            .addSnapshotListener { s, _ -> entry = s?.toObject(EntryDoc::class.java) }
+        onDispose { reg.remove() }
+    }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(m.slot, style = MaterialTheme.typography.titleMedium)
+                Text("${m.joined}/$MAX_PLAYERS players")
+            }
+
+            val e = entry
+            if (e == null) {
+                Button(
+                    onClick = {
+                        busy = true
+                        onMessage(null)
+                        scope.launch {
+                            try { Repo.joinMatch(m.id) }
+                            catch (ex: Exception) { onMessage(ex.message) }
+                            finally { busy = false }
+                        }
+                    },
+                    enabled = !busy && m.joined < MAX_PLAYERS,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (m.joined >= MAX_PLAYERS) "Full" else "Join ($ENTRY_FEE coins)") }
+            } else {
+                Text("✅ You joined", color = MaterialTheme.colorScheme.primary)
+                if (m.roomId.isNotBlank()) {
+                    Text("Room ID: ${m.roomId}")
+                    Text("Password: ${m.roomPass}")
+                } else {
+                    Text("Room ID and password will appear here before the match.")
+                }
+                if (e.awarded) {
+                    Text("Result: ${e.kills} kills" + (if (e.booyah) " + Booyah" else "") +
+                        " · Prize ${e.prize} coins")
                 }
             }
         }
