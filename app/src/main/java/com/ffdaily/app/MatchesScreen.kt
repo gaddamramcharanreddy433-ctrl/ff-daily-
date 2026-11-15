@@ -47,4 +47,53 @@ fun MatchesScreen() {
 
 @Composable
 private fun MatchCard(m: MatchDoc, onMessage: (String?) -> Unit) {
-    var entry by remember(m.id) { mutableStateOf
+    var entry by remember(m.id) { mutableStateOf<EntryDoc?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    DisposableEffect(m.id) {
+        val reg = Repo.db.collection("matches").document(m.id)
+            .collection("entries").document(Repo.uid!!)
+            .addSnapshotListener { s, _ -> entry = s?.toObject(EntryDoc::class.java) }
+        onDispose { reg.remove() }
+    }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(m.slot, style = MaterialTheme.typography.titleMedium)
+                Text("${m.joined}/$MAX_PLAYERS players")
+            }
+
+            if (m.joined < MIN_PLAYERS) {
+                Text(
+                    "Needs ${MIN_PLAYERS - m.joined} more players to start",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            val e = entry
+            if (e == null) {
+                Button(
+                    onClick = {
+                        busy = true
+                        onMessage(null)
+                        scope.launch {
+                            try { Repo.joinMatch(m.id) }
+                            catch (ex: Exception) { onMessage(ex.message) }
+                            finally { busy = false }
+                        }
+                    },
+                    enabled = !busy && m.joined < MAX_PLAYERS,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (m.joined >= MAX_PLAYERS) "Full" else "Join ($ENTRY_FEE coins)") }
+            } else {
+                Text("✅ You joined", color = MaterialTheme.colorScheme.primary)
+                if (m.roomId.isNotBlank()) {
+                    Text("Room ID: ${m.roomId}")
+                    Text("Password: ${m.roomPass}")
+                } else {
+                    Text("Room ID and password will appear here before the match.")
+                }
+                if (e.awarded) {
+                    Text("Result: ${e.kills} kills" + (if (e.booyah) " + Booyah" else "") +
