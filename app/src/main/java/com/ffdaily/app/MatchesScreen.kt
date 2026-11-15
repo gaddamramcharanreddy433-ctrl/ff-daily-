@@ -97,3 +97,9 @@ private fun MatchCard(m: MatchDoc, onMessage: (String?) -> Unit) {
                 }
                 if (e.awarded) {
                     Text("Result: ${e.kills} kills" + (if (e.booyah) " + Booyah" else "") +
+                        " · Prize ${e.prize} coins")
+                }
+            }
+        }
+    }
+}
