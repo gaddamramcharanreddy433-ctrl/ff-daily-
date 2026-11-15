@@ -229,26 +229,49 @@ private fun RoomRow(m: MatchDoc) {
     var roomId by remember(m.id, m.roomId) { mutableStateOf(m.roomId) }
     var pass by remember(m.id, m.roomPass) { mutableStateOf(m.roomPass) }
     var msg by remember { mutableStateOf<String?>(null) }
+    var confirm by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("${m.slot} · ${m.joined}/$MAX_PLAYERS players", style = MaterialTheme.typography.titleMedium)
+            if (m.joined < MIN_PLAYERS) {
+                Text("Below minimum ($MIN_PLAYERS players)", color = MaterialTheme.colorScheme.error)
+            }
             OutlinedTextField(roomId, { roomId = it.trim() }, label = { Text("Room ID") },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(pass, { pass = it.trim() }, label = { Text("Password") },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
             msg?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-            Button(onClick = {
-                msg = null
-                scope.launch {
-                    try {
-                        Repo.db.collection("matches").document(m.id)
-                            .update(mapOf("roomId" to roomId, "roomPass" to pass)).await()
-                        msg = "Published"
-                    } catch (e: Exception) { msg = e.message }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    msg = null
+                    scope.launch {
+                        try {
+                            Repo.db.collection("matches").document(m.id)
+                                .update(mapOf("roomId" to roomId, "roomPass" to pass)).await()
+                            msg = "Published"
+                        } catch (e: Exception) { msg = e.message }
+                    }
+                }) { Text("Publish") }
+                OutlinedButton(onClick = { confirm = true }) { Text("Cancel + refund") }
+            }
+            if (confirm) {
+                Text("Refund everyone in this match?")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        confirm = false
+                        msg = null
+                        scope.launch {
+                            try {
+                                val n = cancelAndRefund(m.id)
+                                msg = "Cancelled. Refunded $n players"
+                            } catch (e: Exception) { msg = e.message }
+                        }
+                    }) { Text("Yes") }
+                    TextButton(onClick = { confirm = false }) { Text("No") }
                 }
-            }) { Text("Publish") }
+            }
         }
     }
 }
@@ -316,6 +339,29 @@ private suspend fun awardPrize(matchId: String, uid: String, kills: Long, booyah
         if (prize > 0) t.update(uRef, "coins", FieldValue.increment(prize))
         null
     }.await()
+}
+
+private suspend fun cancelAndRefund(matchId: String): Int {
+    val mRef = Repo.db.collection("matches").document(matchId)
+    val snap = mRef.collection("entries").get().await()
+    val uids = snap.documents.map { it.id }
+    Repo.db.runTransaction { t ->
+        if (t.get(mRef).getBoolean("cancelled") == true) throw Exception("Already cancelled")
+        val eRefs = uids.map { mRef.collection("entries").document(it) }
+        val docs = eRefs.map { t.get(it) }
+        docs.forEachIndexed { i, d ->
+            if (d.exists() && d.getBoolean("refunded") != true) {
+                t.update(
+                    Repo.db.collection("users").document(uids[i]),
+                    "coins", FieldValue.increment(ENTRY_FEE.toLong())
+                )
+                t.update(eRefs[i], "refunded", true)
+            }
+        }
+        t.update(mRef, "cancelled", true)
+        null
+    }.await()
+    return uids.size
 }
 
 // ---------------------------------------------------------------- Players
