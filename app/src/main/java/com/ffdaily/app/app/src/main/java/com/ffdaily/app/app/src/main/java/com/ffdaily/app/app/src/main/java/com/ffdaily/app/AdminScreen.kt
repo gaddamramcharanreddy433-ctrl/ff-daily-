@@ -256,6 +256,18 @@ private fun RoomRow(m: MatchDoc) {
                 }) { Text("Publish") }
                 OutlinedButton(onClick = { confirm = true }) { Text("Cancel + refund") }
             }
+            OutlinedButton(onClick = {
+                msg = null
+                scope.launch {
+                    try {
+                        Repo.db.collection("matches").document(m.id)
+                            .update(mapOf("roomId" to "", "roomPass" to "")).await()
+                        roomId = ""
+                        pass = ""
+                        msg = "Cleared"
+                    } catch (e: Exception) { msg = e.message }
+                }
+            }) { Text("Clear room") }
             if (confirm) {
                 Text("Refund everyone in this match?")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
