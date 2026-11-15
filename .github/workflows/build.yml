@@ -1,26 +1,34 @@
 name: Build APK
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Place google-services.json
-        run: |
-          find . -type f -not -path './.git/*'
-          f=$(find . -type f -iname '*services*' -not -path './.git/*' | head -n 1)
-          echo "Found: [$f]"
-          [ -n "$f" ] || exit 1
-          cp "$f" app/google-services.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v3
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
-      - run: gradle assembleDebug --no-daemon
+      - name: Place google-services.json
+        run: |
+          f=$(find . -type f -iname '*google*services*.json' -not -path './.git/*' | head -n1)
+          cp "$f" app/google-services.json
+      - name: Clean manifest
+        run: |
+          f=app/src/main/AndroidManifest.xml
+          sed -i '1s/^\xEF\xBB\xBF//' "$f"
+          sed -i '1s/^[[:space:]]*//' "$f"
+          head -c 80 "$f" | od -c | head -3
+      - name: Build
+        run: gradle assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
