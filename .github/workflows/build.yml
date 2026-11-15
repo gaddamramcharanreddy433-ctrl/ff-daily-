@@ -7,9 +7,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Place google-services.json
         run: |
-          f=$(find . -iname '*google*services*.json' | head -n 1)
-          echo "Found: $f"
-          [ "$f" = "./app/google-services.json" ] || cp "$f" app/google-services.json
+          find . -type f -not -path './.git/*'
+          f=$(find . -type f -iname '*services*' -not -path './.git/*' | head -n 1)
+          echo "Found: [$f]"
+          [ -n "$f" ] || exit 1
+          cp "$f" app/google-services.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
