@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "604287517989",
+    "project_id": "tournament-4e54a",
+    "storage_bucket": "tournament-4e54a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:604287517989:android:f9d45a2e926c0082cc46cc",
+        "android_client_info": {
+          "package_name": "com.ffdaily.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAOsxRyTLRQWPRXgFUGT453gv7R3UFjaqI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
