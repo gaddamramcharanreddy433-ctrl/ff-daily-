@@ -18,12 +18,17 @@ jobs:
           gradle-version: 8.7
       - name: Place google-services.json
         run: |
-          find . -type f -not -path './.git/*' | sort
           f=$(find . -type f -iname '*google*services*.json' -not -path './.git/*' | head -n1)
           echo "Found: $f"
           cp "$f" app/google-services.json
+      - name: Clean manifest
+        run: |
+          f=app/src/main/AndroidManifest.xml
+          sed -i '1s/^\xEF\xBB\xBF//' "$f"
+          sed -i '1s/^[[:space:]]*//' "$f"
+          head -c 80 "$f" | od -c | head -3
       - name: Build
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug
